@@ -80,6 +80,7 @@ class OnePhenotypePipeline(Processor):
     maximum_per_sample_missing_genotype_rate: float
     hardy_weinberg_p_value_threshold: float
 
+    phenotype_type: str
     keep_samples_phen_file: str
 
     def main(
@@ -107,6 +108,10 @@ class OnePhenotypePipeline(Processor):
         self.hardy_weinberg_p_value_threshold = hardy_weinberg_p_value_threshold
 
         self.copy_and_clean_bfile()
+        self.determine_phenotype_type()
+        if self.phenotype_type == 'continuous':
+            self.logger.info(f'Continuous phenotype "{self.phenotype_column}" is not supported yet, skipping')
+            return
         self.build_keep_samples_phen_file()
         self.plink_keep()
         self.plink_pheno()
@@ -124,18 +129,29 @@ class OnePhenotypePipeline(Processor):
             dstdir=self.workdir
         )
 
-        self.logger.info(f'Cleaning up suffix in the IID column of {self.bfile}.fam')
+        self.logger.info(f'Cleaning up suffix in the IID column of {self.bfile}.fam')  # lousy problem caused by the TPMI team
         df = read_fam(path=f'{self.bfile}.fam')
         def remove_suffix(x: str) -> str:
             return x.split('_')[0]
         df['IID'] = df['IID'].apply(remove_suffix)
         write_fam(df=df, path=f'{self.bfile}.fam')
 
+    def determine_phenotype_type(self):
+        phenotypes = pd.read_excel(self.phenotype_xslx)[self.phenotype_column]
+        unqiue_phenotypes = set(phenotypes.dropna().astype(float))
+        if unqiue_phenotypes == {0, 1} or unqiue_phenotypes == {1, 2}:
+            self.phenotype_type = 'binary'
+        else:
+            self.phenotype_type = 'continuous'
+
     def build_keep_samples_phen_file(self):
         self.logger.info(f'Building keep_samples.phen file')
         id_link_df = pd.read_excel(self.id_link_xslx)
         phenotype_df = pd.read_excel(self.phenotype_xslx, usecols=[self.uuid_column, self.phenotype_column])
         fam_df = read_fam(path=f'{self.bfile}.fam')
+
+        if set(phenotype_df[self.phenotype_column].dropna()) == {0, 1}:
+            phenotype_df[self.phenotype_column] = phenotype_df[self.phenotype_column] + 1  # plink requires the phenotype to be 1=control, 2=case
 
         phenotype_df = phenotype_df.merge(
             right=id_link_df,
