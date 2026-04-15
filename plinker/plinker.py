@@ -47,11 +47,27 @@ class Plinker(Processor):
         self.maximum_per_sample_missing_genotype_rate = maximum_per_sample_missing_genotype_rate
         self.hardy_weinberg_p_value_threshold = hardy_weinberg_p_value_threshold
 
+        self.copy_and_clean_bfile()
         self.build_keep_samples_phen()
         self.plink_keep()
         self.plink_pheno()
         self.plink_qc()
         self.plink_assoc()
+
+    def copy_and_clean_bfile(self):
+        for ext in ['.bed', '.bim', '.fam']:
+            shutil.copy(f'{self.bfile}{ext}', f'{self.workdir}\\')
+        self.bfile = edit_fpath(
+            fpath=self.bfile,
+            old_suffix='',
+            new_suffix='',
+            dstdir=self.workdir
+        )
+        df = read_fam(path=f'{self.bfile}.fam')
+        def remove_suffix(x: str) -> str:
+            return x.split('_')[0]
+        df['IID'] = df['IID'].apply(remove_suffix)
+        write_fam(df=df, path=f'{self.bfile}.fam')
 
     def build_keep_samples_phen(self):
         id_link_df = pd.read_excel(self.id_link_xslx)
@@ -175,6 +191,10 @@ def read_fam(path: str) -> pd.DataFrame:
     df = pd.read_csv(path, sep=sep, header=None)
     df.columns = ['FID', 'IID', 'PID', 'MID', 'SEX', 'PHENO']
     return df
+
+
+def write_fam(df: pd.DataFrame, path: str):
+    df.to_csv(path, index=False, header=False, sep=' ')
 
 
 def read_bim(path: str) -> pd.DataFrame:

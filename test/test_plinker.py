@@ -12,7 +12,21 @@ class TestPlinker(TestCase):
     # def tearDown(self):
     #     self.tear_down()
 
-    def test_main(self):
+    def test_small_dataset(self):
+        Plinker(settings=self.settings).main(
+            bfile=f'{self.indir}/wgas2',
+            id_link_xslx=f'{self.indir}/wgas2_ID_link.xlsx',
+            phenotype_xslx=f'{self.indir}/wgas2_phenotype.xlsx',
+            uudi_column='uuid',
+            tpmi_id_column='TPMINUM',
+            phenotype_column='PHENOTYPE_A',
+            minimum_minor_allele_frequency=0.01,
+            maximum_per_variant_missing_genotype_rate=0.05,
+            maximum_per_sample_missing_genotype_rate=0.01,
+            hardy_weinberg_p_value_threshold=1e-6,
+        )
+
+    def test_large_dataset(self):
         Plinker(settings=self.settings).main(
             bfile=f'{self.indir}/1kg_phase1_all',
             id_link_xslx=f'{self.indir}/1kg_phase1_all_ID_link.xlsx',

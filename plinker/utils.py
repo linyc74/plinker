@@ -16,7 +16,7 @@ def edit_fpath(
     if dstdir is None:
         dstdir = os.path.dirname(fpath)
 
-    return f'{dstdir}/{f}'
+    return os.path.join(dstdir, f)
 
 
 def get_temp_path(
