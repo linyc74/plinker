@@ -9,8 +9,8 @@ class TestPlinker(TestCase):
     def setUp(self):
         self.set_up(py_path=__file__)
 
-    # def tearDown(self):
-    #     self.tear_down()
+    def tearDown(self):
+        self.tear_down()
 
     def test_small_dataset(self):
         Plinker(settings=self.settings).main(
@@ -24,6 +24,7 @@ class TestPlinker(TestCase):
             maximum_per_variant_missing_genotype_rate=0.05,
             maximum_per_sample_missing_genotype_rate=0.01,
             hardy_weinberg_p_value_threshold=1e-6,
+            association_p_value_threshold=1e-3,
         )
 
     def test_large_dataset(self):
@@ -38,6 +39,7 @@ class TestPlinker(TestCase):
             maximum_per_variant_missing_genotype_rate=0.05,
             maximum_per_sample_missing_genotype_rate=0.05,
             hardy_weinberg_p_value_threshold=0.001,
+            association_p_value_threshold=1e-3,
         )
 
 

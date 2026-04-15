@@ -105,6 +105,15 @@ OPTIONAL = [
         },
     },
     {
+        'keys': ['--association-p-value-threshold'],
+        'properties': {
+            'type': float,
+            'required': False,
+            'default': 1e-5,
+            'help': 'association analysis p-value threshold (default: %(default)s)',
+        },
+    },
+    {
         'keys': ['-t', '--threads'],
         'properties': {
             'type': int,
@@ -179,6 +188,7 @@ class EntryPoint:
             maximum_per_variant_missing_genotype_rate=args.maximum_per_variant_missing_genotype_rate,
             maximum_per_sample_missing_genotype_rate=args.maximum_per_sample_missing_genotype_rate,
             hardy_weinberg_p_value_threshold=args.hardy_weinberg_p_value_threshold,
+            association_p_value_threshold=args.association_p_value_threshold,
             outdir=args.outdir,
             threads=args.threads,
             debug=args.debug)

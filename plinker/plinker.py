@@ -23,6 +23,7 @@ class Plinker(Processor):
     maximum_per_variant_missing_genotype_rate: float
     maximum_per_sample_missing_genotype_rate: float
     hardy_weinberg_p_value_threshold: float
+    association_p_value_threshold: float
 
     def main(
             self,
@@ -35,7 +36,8 @@ class Plinker(Processor):
             minimum_minor_allele_frequency: float,
             maximum_per_variant_missing_genotype_rate: float,
             maximum_per_sample_missing_genotype_rate: float,
-            hardy_weinberg_p_value_threshold: float):
+            hardy_weinberg_p_value_threshold: float,
+            association_p_value_threshold: float):
 
         self.bfile = bfile
         self.id_link_xslx = id_link_xslx
@@ -47,7 +49,8 @@ class Plinker(Processor):
         self.maximum_per_variant_missing_genotype_rate = maximum_per_variant_missing_genotype_rate
         self.maximum_per_sample_missing_genotype_rate = maximum_per_sample_missing_genotype_rate
         self.hardy_weinberg_p_value_threshold = hardy_weinberg_p_value_threshold
-
+        self.association_p_value_threshold = association_p_value_threshold
+        
         for phenotype_column in self.phenotype_columns:
             settings = copy(self.settings)
             settings.outdir = join(self.outdir, phenotype_column)
@@ -64,7 +67,8 @@ class Plinker(Processor):
                 minimum_minor_allele_frequency=self.minimum_minor_allele_frequency,
                 maximum_per_variant_missing_genotype_rate=self.maximum_per_variant_missing_genotype_rate,
                 maximum_per_sample_missing_genotype_rate=self.maximum_per_sample_missing_genotype_rate,
-                hardy_weinberg_p_value_threshold=self.hardy_weinberg_p_value_threshold)
+                hardy_weinberg_p_value_threshold=self.hardy_weinberg_p_value_threshold,
+                association_p_value_threshold=self.association_p_value_threshold)
 
 
 class OnePhenotypePipeline(Processor):
@@ -82,6 +86,7 @@ class OnePhenotypePipeline(Processor):
 
     phenotype_type: str
     keep_samples_phen_file: str
+    association_file_prefix: str 
 
     def main(
             self,
@@ -94,7 +99,8 @@ class OnePhenotypePipeline(Processor):
             minimum_minor_allele_frequency: float,
             maximum_per_variant_missing_genotype_rate: float,
             maximum_per_sample_missing_genotype_rate: float,
-            hardy_weinberg_p_value_threshold: float):
+            hardy_weinberg_p_value_threshold: float,
+            association_p_value_threshold: float):
 
         self.bfile = bfile
         self.id_link_xslx = id_link_xslx
@@ -106,7 +112,8 @@ class OnePhenotypePipeline(Processor):
         self.maximum_per_variant_missing_genotype_rate = maximum_per_variant_missing_genotype_rate
         self.maximum_per_sample_missing_genotype_rate = maximum_per_sample_missing_genotype_rate
         self.hardy_weinberg_p_value_threshold = hardy_weinberg_p_value_threshold
-
+        self.association_p_value_threshold = association_p_value_threshold
+        
         self.copy_and_clean_bfile()
         self.determine_phenotype_type()
         if self.phenotype_type == 'continuous':
@@ -117,7 +124,7 @@ class OnePhenotypePipeline(Processor):
         self.plink_pheno()
         self.plink_qc()
         self.plink_assoc()
-        self.sort_by_association_p_values()
+        self.sort_and_filter_results()
 
     def copy_and_clean_bfile(self):
         for ext in ['.bed', '.bim', '.fam']:
@@ -253,21 +260,21 @@ class OnePhenotypePipeline(Processor):
             f'2> {out}.stderr',
         ]
         self.call(self.CMD_LINEBREAK.join(lines))
+        self.association_file_prefix = out
 
-        for src_ext, dst_ext in [
-            ('.assoc', '.txt'),
-            ('.assoc.adjusted', '-adjusted.txt'),
-            ('.log', '.log'),
-        ]:
-            src = f'{out}{src_ext}'
-            dst = join(self.outdir, f'association{dst_ext}')
-            shutil.copy(src, dst)
-
-    def sort_by_association_p_values(self):
-        df = pd.read_csv(join(self.outdir, 'association.txt'), sep=r'\s+')
-        df.dropna(subset=['P'], inplace=True)
+    def sort_and_filter_results(self):
+        df = pd.read_csv(f'{self.association_file_prefix}.assoc', sep=r'\s+')
+        df = df[df['P'] <= self.association_p_value_threshold]
         df.sort_values(by='P', ascending=True, inplace=True)
-        df.to_csv(join(self.outdir, 'association-sorted.csv'), index=False)
+        df.to_csv(join(self.outdir, 'association.csv'), index=False)
+
+        snps = df['SNP'].tolist()
+
+        df = pd.read_csv(f'{self.association_file_prefix}.assoc.adjusted', sep=r'\s+')
+        df = df[df['SNP'].isin(snps)]
+        df.to_csv(join(self.outdir, 'association-adjusted.csv'), index=False)
+
+        shutil.copy(f'{self.association_file_prefix}.log', join(self.outdir, 'association.log'))
 
 
 def read_fam(path: str) -> pd.DataFrame:
