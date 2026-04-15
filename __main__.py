@@ -34,7 +34,7 @@ REQUIRED = [
         },
     },
     {
-        'keys': ['--uudi-column'],
+        'keys': ['--uuid-column'],
         'properties': {
             'type': str,
             'required': True,
@@ -172,7 +172,7 @@ class EntryPoint:
             bfile=args.bfile,
             id_link_xslx=args.id_link_xslx,
             phenotype_xslx=args.phenotype_xslx,
-            uudi_column=args.uudi_column,
+            uuid_column=args.uuid_column,
             tpmi_id_column=args.tpmi_id_column,
             phenotype_columns=args.phenotype_columns,
             minimum_minor_allele_frequency=args.minimum_minor_allele_frequency,

@@ -16,7 +16,7 @@ class Plinker(Processor):
     bfile: str
     id_link_xslx: str
     phenotype_xslx: str
-    uudi_column: str
+    uuid_column: str
     tpmi_id_column: str
     phenotype_columns: List[str]
     minimum_minor_allele_frequency: float
@@ -29,7 +29,7 @@ class Plinker(Processor):
             bfile: str,
             id_link_xslx: str,
             phenotype_xslx: str,
-            uudi_column: str,
+            uuid_column: str,
             tpmi_id_column: str,
             phenotype_columns: List[str],
             minimum_minor_allele_frequency: float,
@@ -40,7 +40,7 @@ class Plinker(Processor):
         self.bfile = bfile
         self.id_link_xslx = id_link_xslx
         self.phenotype_xslx = phenotype_xslx
-        self.uudi_column = uudi_column
+        self.uuid_column = uuid_column
         self.tpmi_id_column = tpmi_id_column
         self.phenotype_columns = phenotype_columns
         self.minimum_minor_allele_frequency = minimum_minor_allele_frequency
@@ -58,7 +58,7 @@ class Plinker(Processor):
                 bfile=self.bfile,
                 id_link_xslx=self.id_link_xslx,
                 phenotype_xslx=self.phenotype_xslx,
-                uudi_column=self.uudi_column,
+                uuid_column=self.uuid_column,
                 tpmi_id_column=self.tpmi_id_column,
                 phenotype_column=phenotype_column,
                 minimum_minor_allele_frequency=self.minimum_minor_allele_frequency,
@@ -72,7 +72,7 @@ class OnePhenotypePipeline(Processor):
     bfile: str
     id_link_xslx: str
     phenotype_xslx: str
-    uudi_column: str
+    uuid_column: str
     tpmi_id_column: str
     phenotype_column: str
     minimum_minor_allele_frequency: float
@@ -87,7 +87,7 @@ class OnePhenotypePipeline(Processor):
             bfile: str,
             id_link_xslx: str,
             phenotype_xslx: str,
-            uudi_column: str,
+            uuid_column: str,
             tpmi_id_column: str,
             phenotype_column: str,
             minimum_minor_allele_frequency: float,
@@ -98,7 +98,7 @@ class OnePhenotypePipeline(Processor):
         self.bfile = bfile
         self.id_link_xslx = id_link_xslx
         self.phenotype_xslx = phenotype_xslx
-        self.uudi_column = uudi_column
+        self.uuid_column = uuid_column
         self.tpmi_id_column = tpmi_id_column
         self.phenotype_column = phenotype_column
         self.minimum_minor_allele_frequency = minimum_minor_allele_frequency
@@ -131,16 +131,16 @@ class OnePhenotypePipeline(Processor):
 
     def build_keep_samples_phen(self):
         id_link_df = pd.read_excel(self.id_link_xslx)
-        phenotype_df = pd.read_excel(self.phenotype_xslx, usecols=[self.uudi_column, self.phenotype_column])
+        phenotype_df = pd.read_excel(self.phenotype_xslx, usecols=[self.uuid_column, self.phenotype_column])
         fam_df = read_fam(path=f'{self.bfile}.fam')
 
         phenotype_df = phenotype_df.merge(
             right=id_link_df,
             how='inner',
-            left_on=self.uudi_column,
-            right_on=self.uudi_column,
+            left_on=self.uuid_column,
+            right_on=self.uuid_column,
         )
-        phenotype_df.drop(columns=[self.uudi_column], inplace=True)
+        phenotype_df.drop(columns=[self.uuid_column], inplace=True)
         
         fam_df = fam_df.merge(
             right=phenotype_df,
