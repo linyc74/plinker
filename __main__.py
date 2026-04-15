@@ -7,14 +7,14 @@ __VERSION__ = '1.0.0-beta'
 
 
 PROG = "python plinker"
-DESCRIPTION = f'GWAS pipeline based on PLINK (version {__VERSION__}) by Yu-Cheng Lin (ylin@nycu.edu.tw)'
+DESCRIPTION = f'GWAS pipeline based on PLINK 1.9\nAuthor: Yu-Cheng Lin (ylin@nycu.edu.tw)'
 REQUIRED = [
     {
         'keys': ['--bfile'],
         'properties': {
             'type': str,
             'required': True,
-            'help': 'plink binary files prefix (expects .bed/.bim/.fam)',
+            'help': 'plink binary files prefix, expects .bed/.bim/.fam files',
         },
     },
     {
@@ -22,7 +22,7 @@ REQUIRED = [
         'properties': {
             'type': str,
             'required': True,
-            'help': 'path to ID link Excel file with TPMI ID and UUID columns',
+            'help': 'path to ID link Excel file with TPMI ID and UUID',
         },
     },
     {
@@ -50,11 +50,11 @@ REQUIRED = [
         },
     },
     {
-        'keys': ['--phenotype-column'],
+        'keys': ['--phenotype-columns'],
         'properties': {
             'type': str,
             'required': True,
-            'help': 'phenotype column name in the phenotype Excel file',
+            'help': 'comma-separated phenotype column names in the phenotype Excel file',
         },
     },
 ]
@@ -174,7 +174,7 @@ class EntryPoint:
             phenotype_xslx=args.phenotype_xslx,
             uudi_column=args.uudi_column,
             tpmi_id_column=args.tpmi_id_column,
-            phenotype_column=args.phenotype_column,
+            phenotype_columns=args.phenotype_columns,
             minimum_minor_allele_frequency=args.minimum_minor_allele_frequency,
             maximum_per_variant_missing_genotype_rate=args.maximum_per_variant_missing_genotype_rate,
             maximum_per_sample_missing_genotype_rate=args.maximum_per_sample_missing_genotype_rate,

@@ -1,6 +1,9 @@
+import os
 import shutil
 import pandas as pd
-from os.path import basename, dirname
+from copy import copy
+from typing import List
+from os.path import basename, dirname, join
 from .utils import edit_fpath
 from .template import Processor
 
@@ -9,6 +12,62 @@ PLINK_EXE = f'{dirname(dirname(__file__))}\\plink.exe'
 
 
 class Plinker(Processor):
+
+    bfile: str
+    id_link_xslx: str
+    phenotype_xslx: str
+    uudi_column: str
+    tpmi_id_column: str
+    phenotype_columns: List[str]
+    minimum_minor_allele_frequency: float
+    maximum_per_variant_missing_genotype_rate: float
+    maximum_per_sample_missing_genotype_rate: float
+    hardy_weinberg_p_value_threshold: float
+
+    def main(
+            self,
+            bfile: str,
+            id_link_xslx: str,
+            phenotype_xslx: str,
+            uudi_column: str,
+            tpmi_id_column: str,
+            phenotype_columns: List[str],
+            minimum_minor_allele_frequency: float,
+            maximum_per_variant_missing_genotype_rate: float,
+            maximum_per_sample_missing_genotype_rate: float,
+            hardy_weinberg_p_value_threshold: float):
+
+        self.bfile = bfile
+        self.id_link_xslx = id_link_xslx
+        self.phenotype_xslx = phenotype_xslx
+        self.uudi_column = uudi_column
+        self.tpmi_id_column = tpmi_id_column
+        self.phenotype_columns = phenotype_columns
+        self.minimum_minor_allele_frequency = minimum_minor_allele_frequency
+        self.maximum_per_variant_missing_genotype_rate = maximum_per_variant_missing_genotype_rate
+        self.maximum_per_sample_missing_genotype_rate = maximum_per_sample_missing_genotype_rate
+        self.hardy_weinberg_p_value_threshold = hardy_weinberg_p_value_threshold
+
+        for phenotype_column in self.phenotype_columns:
+            settings = copy(self.settings)
+            settings.outdir = join(self.outdir, phenotype_column)
+            settings.workdir = join(self.workdir, phenotype_column)
+            for d in [settings.workdir, settings.outdir]:
+                os.makedirs(d, exist_ok=True)
+            OnePhenotypePipeline(settings).main(
+                bfile=self.bfile,
+                id_link_xslx=self.id_link_xslx,
+                phenotype_xslx=self.phenotype_xslx,
+                uudi_column=self.uudi_column,
+                tpmi_id_column=self.tpmi_id_column,
+                phenotype_column=phenotype_column,
+                minimum_minor_allele_frequency=self.minimum_minor_allele_frequency,
+                maximum_per_variant_missing_genotype_rate=self.maximum_per_variant_missing_genotype_rate,
+                maximum_per_sample_missing_genotype_rate=self.maximum_per_sample_missing_genotype_rate,
+                hardy_weinberg_p_value_threshold=self.hardy_weinberg_p_value_threshold)
+
+
+class OnePhenotypePipeline(Processor):
     
     bfile: str
     id_link_xslx: str
@@ -53,6 +112,7 @@ class Plinker(Processor):
         self.plink_pheno()
         self.plink_qc()
         self.plink_assoc()
+        self.sort_by_association_p_values()
 
     def copy_and_clean_bfile(self):
         for ext in ['.bed', '.bim', '.fam']:
@@ -107,7 +167,8 @@ class Plinker(Processor):
             f'--keep {self.keep_samples_phen}',
             '--make-bed',
             f'--out {out}',
-            f'> {out}.stdout',
+            f'1> {out}.stdout',
+            f'2> {out}.stderr',
         ]
         self.call(self.CMD_LINEBREAK.join(lines))
         self.bfile = out
@@ -126,7 +187,8 @@ class Plinker(Processor):
             f'--mpheno 1',
             '--make-bed',
             f'--out {out}',
-            f'> {out}.stdout',
+            f'1> {out}.stdout',
+            f'2> {out}.stderr',
         ]
         self.call(self.CMD_LINEBREAK.join(lines))
         self.bfile = out
@@ -147,7 +209,8 @@ class Plinker(Processor):
             f'--hwe {self.hardy_weinberg_p_value_threshold}',
             '--make-bed',
             f'--out {out}',
-            f'> {out}.stdout',
+            f'1> {out}.stdout',
+            f'2> {out}.stderr',
         ]
         self.call(self.CMD_LINEBREAK.join(lines))
         self.bfile = out
@@ -165,7 +228,8 @@ class Plinker(Processor):
             '--assoc',
             '--adjust',
             f'--out {out}',
-            f'> {out}.stdout',
+            f'1> {out}.stdout',
+            f'2> {out}.stderr',
         ]
         self.call(self.CMD_LINEBREAK.join(lines))
 
@@ -173,11 +237,16 @@ class Plinker(Processor):
             ('.assoc', '.txt'),
             ('.assoc.adjusted', '-adjusted.txt'),
             ('.log', '.log'),
-            ('.stdout', '.stdout'),
         ]:
             src = f'{out}{src_ext}'
             dst = f'{self.outdir}\\association{dst_ext}'
             shutil.copy(src, dst)
+
+    def sort_by_association_p_values(self):
+        df = pd.read_csv(join(self.outdir, 'association.txt'), sep=r'\s+')
+        df.dropna(subset=['P'], inplace=True)
+        df.sort_values(by='P', ascending=True, inplace=True)
+        df.to_csv(join(self.outdir, 'association-sorted.csv'), index=False)
 
 
 def read_fam(path: str) -> pd.DataFrame:
