@@ -64,7 +64,7 @@ OPTIONAL = [
         'properties': {
             'type': str,
             'required': False,
-            'default': 'qiime2_pipeline_outdir',
+            'default': 'plinker_outdir',
             'help': 'path to the output directory (default: %(default)s)',
         }
     },
