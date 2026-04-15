@@ -10,7 +10,6 @@ class Settings:
     threads: int
     debug: bool
     mock: bool
-    for_publication: bool
 
     def __init__(
             self,
@@ -18,15 +17,13 @@ class Settings:
             outdir: str,
             threads: int,
             debug: bool,
-            mock: bool,
-            for_publication: bool):
+            mock: bool):
 
         self.workdir = workdir
         self.outdir = outdir
         self.threads = threads
         self.debug = debug
         self.mock = mock
-        self.for_publication = for_publication
 
 
 class Logger:

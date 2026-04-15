@@ -30,8 +30,7 @@ def main(
         outdir=outdir,
         threads=threads,
         debug=debug,
-        mock=False,
-        for_publication=publication_figure)
+        mock=False)
 
     for d in [workdir, outdir]:
         os.makedirs(d, exist_ok=True)
