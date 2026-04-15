@@ -8,7 +8,7 @@ from .utils import edit_fpath
 from .template import Processor
 
 
-PLINK_EXE = f'{dirname(dirname(__file__))}\\plink.exe'
+PLINK_EXE = join(dirname(dirname(__file__)), 'plink.exe')
 
 
 class Plinker(Processor):
@@ -80,7 +80,7 @@ class OnePhenotypePipeline(Processor):
     maximum_per_sample_missing_genotype_rate: float
     hardy_weinberg_p_value_threshold: float
 
-    keep_samples_phen: str
+    keep_samples_phen_file: str
 
     def main(
             self,
@@ -107,7 +107,7 @@ class OnePhenotypePipeline(Processor):
         self.hardy_weinberg_p_value_threshold = hardy_weinberg_p_value_threshold
 
         self.copy_and_clean_bfile()
-        self.build_keep_samples_phen()
+        self.build_keep_samples_phen_file()
         self.plink_keep()
         self.plink_pheno()
         self.plink_qc()
@@ -116,20 +116,23 @@ class OnePhenotypePipeline(Processor):
 
     def copy_and_clean_bfile(self):
         for ext in ['.bed', '.bim', '.fam']:
-            shutil.copy(f'{self.bfile}{ext}', f'{self.workdir}\\')
+            shutil.copy(f'{self.bfile}{ext}', self.workdir)
         self.bfile = edit_fpath(
             fpath=self.bfile,
             old_suffix='',
             new_suffix='',
             dstdir=self.workdir
         )
+
+        self.logger.info(f'Cleaning up suffix in the IID column of {self.bfile}.fam')
         df = read_fam(path=f'{self.bfile}.fam')
         def remove_suffix(x: str) -> str:
             return x.split('_')[0]
         df['IID'] = df['IID'].apply(remove_suffix)
         write_fam(df=df, path=f'{self.bfile}.fam')
 
-    def build_keep_samples_phen(self):
+    def build_keep_samples_phen_file(self):
+        self.logger.info(f'Building keep_samples.phen file')
         id_link_df = pd.read_excel(self.id_link_xslx)
         phenotype_df = pd.read_excel(self.phenotype_xslx, usecols=[self.uuid_column, self.phenotype_column])
         fam_df = read_fam(path=f'{self.bfile}.fam')
@@ -148,11 +151,13 @@ class OnePhenotypePipeline(Processor):
             left_on='IID',
             right_on=self.tpmi_id_column,
         )
-        fam_df['PHENO'] = fam_df[self.phenotype_column]
+
+        fam_df['PHENO'] = fam_df[self.phenotype_column]  # update with the user-specified phenotype column
+
         fam_df.drop(columns=[self.tpmi_id_column, self.phenotype_column], inplace=True)
 
-        self.keep_samples_phen = f'{self.workdir}\\keep_samples.phen'
-        fam_df[['FID', 'IID', 'PHENO']].to_csv(self.keep_samples_phen, index=False, header=False, sep=' ')
+        self.keep_samples_phen_file = join(self.workdir, 'keep_samples.phen')
+        fam_df[['FID', 'IID', 'PHENO']].to_csv(self.keep_samples_phen_file, index=False, header=False, sep=' ')
 
     def plink_keep(self):
         out = edit_fpath(
@@ -164,7 +169,7 @@ class OnePhenotypePipeline(Processor):
         lines = [
             f'{PLINK_EXE}',
             f'--bfile {self.bfile}',
-            f'--keep {self.keep_samples_phen}',
+            f'--keep {self.keep_samples_phen_file}',
             '--make-bed',
             f'--out {out}',
             f'1> {out}.stdout',
@@ -183,7 +188,7 @@ class OnePhenotypePipeline(Processor):
         lines = [
             f'{PLINK_EXE}',
             f'--bfile {self.bfile}',
-            f'--pheno {self.keep_samples_phen}',
+            f'--pheno {self.keep_samples_phen_file}',
             f'--mpheno 1',
             '--make-bed',
             f'--out {out}',
@@ -239,7 +244,7 @@ class OnePhenotypePipeline(Processor):
             ('.log', '.log'),
         ]:
             src = f'{out}{src_ext}'
-            dst = f'{self.outdir}\\association{dst_ext}'
+            dst = join(self.outdir, f'association{dst_ext}')
             shutil.copy(src, dst)
 
     def sort_by_association_p_values(self):
@@ -263,6 +268,7 @@ def read_fam(path: str) -> pd.DataFrame:
 
 
 def write_fam(df: pd.DataFrame, path: str):
+    assert len(df.columns) == 6, f'The number of columns in the dataframe must be 6, but got {len(df.columns)}: {list(df.columns)}'
     df.to_csv(path, index=False, header=False, sep=' ')
 
 

@@ -9,8 +9,8 @@ class TestPlinker(TestCase):
     def setUp(self):
         self.set_up(py_path=__file__)
 
-    # def tearDown(self):
-    #     self.tear_down()
+    def tearDown(self):
+        self.tear_down()
 
     def test_small_dataset(self):
         Plinker(settings=self.settings).main(
@@ -50,10 +50,10 @@ class TestFunctions(TestCase):
         self.tear_down()
 
     def test_read_fam(self):
-        df = read_fam(path=f'{self.indir}/wgas1.fam')
+        df = read_fam(path=f'{self.indir}/wgas2.fam')
         self.assertEqual(df.shape, (90, 6))
     
     def test_read_bim(self):
-        df = read_bim(path=f'{self.indir}/wgas1.bim')
+        df = read_bim(path=f'{self.indir}/wgas2.bim')
         self.assertEqual(df.shape, (228694, 6))
 
