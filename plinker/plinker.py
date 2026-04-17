@@ -157,7 +157,9 @@ class OnePhenotypePipeline(Processor):
         phenotype_df = pd.read_excel(self.phenotype_xslx, usecols=[self.uuid_column, self.phenotype_column])
         fam_df = read_fam(path=f'{self.bfile}.fam')
 
-        if set(phenotype_df[self.phenotype_column].dropna()) == {0, 1}:
+        phenotype_df = phenotype_df.dropna(subset=[self.phenotype_column])
+
+        if set(phenotype_df[self.phenotype_column]) == {0, 1}:
             phenotype_df[self.phenotype_column] = phenotype_df[self.phenotype_column] + 1  # plink requires the phenotype to be 1=control, 2=case
 
         phenotype_df = phenotype_df.merge(
