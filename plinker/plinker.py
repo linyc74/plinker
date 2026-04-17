@@ -162,6 +162,17 @@ class OnePhenotypePipeline(Processor):
         if set(phenotype_df[self.phenotype_column]) == {0, 1}:
             phenotype_df[self.phenotype_column] = phenotype_df[self.phenotype_column] + 1  # plink requires the phenotype to be 1=control, 2=case
 
+        if not id_link_df[self.tpmi_id_column].is_unique:
+            n = id_link_df[self.tpmi_id_column].duplicated().sum()
+            s = 's' if n > 1 else ''
+            self.logger.warning(f'The "{self.tpmi_id_column}" column in the ID link Excel file is not unique, dropping {n} duplicate{s}')
+            id_link_df = id_link_df.drop_duplicates(subset=[self.tpmi_id_column])
+        if not id_link_df[self.uuid_column].is_unique:
+            n = id_link_df[self.uuid_column].duplicated().sum()
+            s = 's' if n > 1 else ''
+            self.logger.warning(f'The "{self.uuid_column}" column in the ID link Excel file is not unique, dropping {n} duplicate{s}')
+            id_link_df = id_link_df.drop_duplicates(subset=[self.uuid_column])
+
         phenotype_df = phenotype_df.merge(
             right=id_link_df,
             how='inner',
