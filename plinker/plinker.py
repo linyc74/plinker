@@ -24,6 +24,7 @@ class Plinker(Processor):
     maximum_per_sample_missing_genotype_rate: float
     hardy_weinberg_p_value_threshold: float
     association_p_value_threshold: float
+    pi_hat: float
 
     def main(
             self,
@@ -37,7 +38,8 @@ class Plinker(Processor):
             maximum_per_variant_missing_genotype_rate: float,
             maximum_per_sample_missing_genotype_rate: float,
             hardy_weinberg_p_value_threshold: float,
-            association_p_value_threshold: float):
+            association_p_value_threshold: float,
+            pi_hat: float):
 
         self.bfile = bfile
         self.id_link_xslx = id_link_xslx
@@ -50,7 +52,8 @@ class Plinker(Processor):
         self.maximum_per_sample_missing_genotype_rate = maximum_per_sample_missing_genotype_rate
         self.hardy_weinberg_p_value_threshold = hardy_weinberg_p_value_threshold
         self.association_p_value_threshold = association_p_value_threshold
-        
+        self.pi_hat = pi_hat
+
         for phenotype_column in self.phenotype_columns:
             settings = copy(self.settings)
             settings.outdir = join(self.outdir, phenotype_column)
@@ -68,7 +71,8 @@ class Plinker(Processor):
                 maximum_per_variant_missing_genotype_rate=self.maximum_per_variant_missing_genotype_rate,
                 maximum_per_sample_missing_genotype_rate=self.maximum_per_sample_missing_genotype_rate,
                 hardy_weinberg_p_value_threshold=self.hardy_weinberg_p_value_threshold,
-                association_p_value_threshold=self.association_p_value_threshold)
+                association_p_value_threshold=self.association_p_value_threshold,
+                pi_hat=self.pi_hat)
 
 
 class OnePhenotypePipeline(Processor):
@@ -83,6 +87,8 @@ class OnePhenotypePipeline(Processor):
     maximum_per_variant_missing_genotype_rate: float
     maximum_per_sample_missing_genotype_rate: float
     hardy_weinberg_p_value_threshold: float
+    association_p_value_threshold: float
+    pi_hat: float
 
     phenotype_type: str
     keep_samples_phen_file: str
@@ -100,7 +106,8 @@ class OnePhenotypePipeline(Processor):
             maximum_per_variant_missing_genotype_rate: float,
             maximum_per_sample_missing_genotype_rate: float,
             hardy_weinberg_p_value_threshold: float,
-            association_p_value_threshold: float):
+            association_p_value_threshold: float,
+            pi_hat: float):
 
         self.bfile = bfile
         self.id_link_xslx = id_link_xslx
@@ -113,6 +120,7 @@ class OnePhenotypePipeline(Processor):
         self.maximum_per_sample_missing_genotype_rate = maximum_per_sample_missing_genotype_rate
         self.hardy_weinberg_p_value_threshold = hardy_weinberg_p_value_threshold
         self.association_p_value_threshold = association_p_value_threshold
+        self.pi_hat = pi_hat
         
         self.copy_and_clean_bfile()
         self.determine_phenotype_type()
@@ -123,6 +131,7 @@ class OnePhenotypePipeline(Processor):
         self.plink_keep()
         self.plink_pheno()
         self.plink_qc()
+        self.plink_kinship()
         self.plink_assoc()
         self.sort_and_filter_results()
 
@@ -256,6 +265,47 @@ class OnePhenotypePipeline(Processor):
         self.call(self.CMD_LINEBREAK.join(lines))
         self.bfile = out
     
+    def plink_kinship(self):
+        # linkage disequilibrium pruning to reduce the number of variants
+        ld_out = edit_fpath(
+            fpath=self.bfile,
+            old_suffix='',
+            new_suffix='_indep',
+            dstdir=self.workdir
+        )
+        lines = [
+            f'{PLINK_EXE}',
+            f'--bfile {self.bfile}',
+            '--indep-pairwise 200 5 0.2',  # window size 200 variants, 5 variants shift each time, r^2 > 0.2 relatedness threshold
+            f'--out {ld_out}',
+            f'1> {ld_out}.stdout',
+            f'2> {ld_out}.stderr',
+        ]
+        self.call(self.CMD_LINEBREAK.join(lines))
+        variants_kept_txt = f'{ld_out}.prune.in'
+
+        # kinship analysis between all pairs of individuals
+        kinship_out = edit_fpath(
+            fpath=self.bfile,
+            old_suffix='',
+            new_suffix='_kinship',
+            dstdir=self.workdir
+        )
+        lines = [
+            f'{PLINK_EXE}',
+            f'--bfile {self.bfile}',
+            f'--extract {variants_kept_txt}',
+            '--genome',
+            f'--min {self.pi_hat}',
+            f'--out {kinship_out}',
+            f'1> {kinship_out}.stdout',
+            f'2> {kinship_out}.stderr',
+        ]
+        self.call(self.CMD_LINEBREAK.join(lines))
+        src = f'{kinship_out}.genome'
+        dst = join(self.outdir, 'kinship.txt')
+        shutil.copy(src, dst)
+
     def plink_assoc(self):
         out = edit_fpath(
             fpath=self.bfile,
@@ -286,8 +336,6 @@ class OnePhenotypePipeline(Processor):
         df = pd.read_csv(f'{self.association_file_prefix}.assoc.adjusted', sep=r'\s+')
         df = df[df['SNP'].isin(snps)]
         df.to_csv(join(self.outdir, 'association-adjusted.csv'), index=False)
-
-        shutil.copy(f'{self.association_file_prefix}.log', join(self.outdir, 'association.log'))
 
 
 def read_fam(path: str) -> pd.DataFrame:

@@ -114,6 +114,15 @@ OPTIONAL = [
         },
     },
     {
+        'keys': ['--pi-hat'],
+        'properties': {
+            'type': float,
+            'required': False,
+            'default': 0.1875,
+            'help': 'PI_HAT threshold for kinship analysis (default: %(default)s)',
+        },
+    },
+    {
         'keys': ['-t', '--threads'],
         'properties': {
             'type': int,
@@ -189,6 +198,7 @@ class EntryPoint:
             maximum_per_sample_missing_genotype_rate=args.maximum_per_sample_missing_genotype_rate,
             hardy_weinberg_p_value_threshold=args.hardy_weinberg_p_value_threshold,
             association_p_value_threshold=args.association_p_value_threshold,
+            pi_hat=args.pi_hat,
             outdir=args.outdir,
             threads=args.threads,
             debug=args.debug)

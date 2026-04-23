@@ -25,6 +25,7 @@ class TestPlinker(TestCase):
             maximum_per_sample_missing_genotype_rate=0.01,
             hardy_weinberg_p_value_threshold=1e-6,
             association_p_value_threshold=1e-3,
+            pi_hat=0.01,
         )
 
     def test_large_dataset(self):
@@ -40,6 +41,7 @@ class TestPlinker(TestCase):
             maximum_per_sample_missing_genotype_rate=0.05,
             hardy_weinberg_p_value_threshold=0.001,
             association_p_value_threshold=1e-3,
+            pi_hat=0.1875,
         )
 
 

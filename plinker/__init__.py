@@ -17,6 +17,7 @@ def main(
         maximum_per_sample_missing_genotype_rate: float,
         hardy_weinberg_p_value_threshold: float,
         association_p_value_threshold: float,
+        pi_hat: float,
         outdir: str,
         threads: int,
         debug: bool):
@@ -48,6 +49,7 @@ def main(
         maximum_per_sample_missing_genotype_rate=maximum_per_sample_missing_genotype_rate,
         hardy_weinberg_p_value_threshold=hardy_weinberg_p_value_threshold,
         association_p_value_threshold=association_p_value_threshold,
+        pi_hat=pi_hat,
     )
 
     if not debug:
