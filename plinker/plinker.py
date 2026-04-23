@@ -1,9 +1,11 @@
 import os
 import shutil
 import pandas as pd
+import matplotlib.pyplot as plt
 from copy import copy
 from typing import List
-from os.path import basename, dirname, join
+from os.path import dirname, join
+from qmplot import manhattanplot, qqplot
 from .utils import edit_fpath
 from .template import Processor
 
@@ -92,7 +94,6 @@ class OnePhenotypePipeline(Processor):
 
     phenotype_type: str
     keep_samples_phen_file: str
-    association_file_prefix: str 
 
     def main(
             self,
@@ -127,13 +128,19 @@ class OnePhenotypePipeline(Processor):
         if self.phenotype_type == 'continuous':
             self.logger.info(f'Continuous phenotype "{self.phenotype_column}" is not supported yet, skipping')
             return
+
         self.build_keep_samples_phen_file()
         self.plink_keep()
         self.plink_pheno()
         self.plink_qc()
+
         self.plink_kinship()
+        
         self.plink_assoc()
-        self.sort_and_filter_results()
+
+        # self.plink_pca()
+        # self.plink_build_covariate_file()
+        # self.plink_logistic()
 
     def copy_and_clean_bfile(self):
         for ext in ['.bed', '.bim', '.fam']:
@@ -215,6 +222,7 @@ class OnePhenotypePipeline(Processor):
             f'{PLINK_EXE}',
             f'--bfile {self.bfile}',
             f'--keep {self.keep_samples_phen_file}',
+            '--allow-no-sex',
             '--make-bed',
             f'--out {out}',
             f'1> {out}.stdout',
@@ -235,6 +243,7 @@ class OnePhenotypePipeline(Processor):
             f'--bfile {self.bfile}',
             f'--pheno {self.keep_samples_phen_file}',
             f'--mpheno 1',
+            '--allow-no-sex',
             '--make-bed',
             f'--out {out}',
             f'1> {out}.stdout',
@@ -257,6 +266,7 @@ class OnePhenotypePipeline(Processor):
             f'--geno {self.maximum_per_variant_missing_genotype_rate}',
             f'--mind {self.maximum_per_sample_missing_genotype_rate}',
             f'--hwe {self.hardy_weinberg_p_value_threshold}',
+            '--allow-no-sex',
             '--make-bed',
             f'--out {out}',
             f'1> {out}.stdout',
@@ -277,6 +287,7 @@ class OnePhenotypePipeline(Processor):
             f'{PLINK_EXE}',
             f'--bfile {self.bfile}',
             '--indep-pairwise 200 5 0.2',  # window size 200 variants, 5 variants shift each time, r^2 > 0.2 relatedness threshold
+            '--allow-no-sex',
             f'--out {ld_out}',
             f'1> {ld_out}.stdout',
             f'2> {ld_out}.stderr',
@@ -295,6 +306,7 @@ class OnePhenotypePipeline(Processor):
             f'{PLINK_EXE}',
             f'--bfile {self.bfile}',
             f'--extract {variants_kept_txt}',
+            '--allow-no-sex',
             '--genome',
             f'--min {self.pi_hat}',
             f'--out {kinship_out}',
@@ -316,6 +328,7 @@ class OnePhenotypePipeline(Processor):
         lines = [
             f'{PLINK_EXE}',
             f'--bfile {self.bfile}',
+            '--allow-no-sex',
             '--assoc',
             '--adjust',
             f'--out {out}',
@@ -323,19 +336,62 @@ class OnePhenotypePipeline(Processor):
             f'2> {out}.stderr',
         ]
         self.call(self.CMD_LINEBREAK.join(lines))
-        self.association_file_prefix = out
 
-    def sort_and_filter_results(self):
-        df = pd.read_csv(f'{self.association_file_prefix}.assoc', sep=r'\s+')
+        self.qmplot(
+            association_file=f'{out}.assoc',
+            output_prefix=join(self.outdir, 'Chi-square')
+        )
+        self.sort_and_filter_association_results(
+            association_prefix=out,
+            output_prefix=join(self.outdir, 'Chi-square')
+        )
+
+    def qmplot(self, association_file: str, output_prefix: str):
+        df = pd.read_csv(association_file, sep=r'\s+')
+        f, ax = plt.subplots(figsize=(22/2.54, 9/2.54), dpi=600)
+        plt.rcParams['font.family'] = 'Arial'
+        plt.rcParams['font.size'] = 7
+        manhattanplot(
+            data=df,
+            chrom='CHR',
+            pos='BP',
+            pv='P',
+            snp='SNP',
+            color='#3B5488,#53BBD5',
+            suggestiveline=1e-5,
+            genomewideline=5e-8,
+            sign_line_cols='#D62728,#2CA02C',  # colors used `suggestiveline` and `genomewideline`
+            sign_marker_color='red'
+        )
+        plt.savefig(f'{output_prefix}-manhattan.png', dpi=600, bbox_inches='tight')
+        plt.close()
+
+        f, ax = plt.subplots(figsize=(6/2.54, 6/2.54), dpi=600)
+        plt.rcParams['font.family'] = 'Arial'
+        plt.rcParams['font.size'] = 8
+        qqplot(
+            data=df['P'],
+            ax=ax,
+            marker='o',
+            xlabel=r"Expected $-log_{10}{(P)}$",
+            ylabel=r"Observed $-log_{10}{(P)}$",
+        )
+        plt.savefig(f'{output_prefix}-qq.png', dpi=600, bbox_inches='tight')
+        plt.close()
+
+    def sort_and_filter_association_results(self, association_prefix: str, output_prefix: str):
+        association_file = f'{association_prefix}.assoc'
+        df = pd.read_csv(association_file, sep=r'\s+')
         df = df[df['P'] <= self.association_p_value_threshold]
         df.sort_values(by='P', ascending=True, inplace=True)
-        df.to_csv(join(self.outdir, 'association.csv'), index=False)
+        df.to_csv(f'{output_prefix}.csv', index=False)
 
         snps = df['SNP'].tolist()
 
-        df = pd.read_csv(f'{self.association_file_prefix}.assoc.adjusted', sep=r'\s+')
+        adjusted_association_file = f'{association_prefix}.assoc.adjusted'
+        df = pd.read_csv(adjusted_association_file, sep=r'\s+')
         df = df[df['SNP'].isin(snps)]
-        df.to_csv(join(self.outdir, 'association-adjusted.csv'), index=False)
+        df.to_csv(f'{output_prefix}-adjusted.csv', index=False)
 
 
 def read_fam(path: str) -> pd.DataFrame:
