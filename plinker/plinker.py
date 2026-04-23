@@ -1,6 +1,7 @@
 import os
 import shutil
 import pandas as pd
+import seaborn as sns
 import matplotlib.pyplot as plt
 from copy import copy
 from typing import List
@@ -93,7 +94,10 @@ class OnePhenotypePipeline(Processor):
     pi_hat: float
 
     phenotype_type: str
+    keep_samples_phen_df: pd.DataFrame
     keep_samples_phen_file: str
+    analysis_ready_bfile: str
+    ld_pruned_variants_txt: str
 
     def main(
             self,
@@ -134,11 +138,13 @@ class OnePhenotypePipeline(Processor):
         self.plink_pheno()
         self.plink_qc()
 
+        self.plink_linkage_disequilibrium_pruning()  # reduce the number of variants, for kinship and PCA
+
         self.plink_kinship()
         
         self.plink_assoc()
 
-        # self.plink_pca()
+        self.plink_pca()
         # self.plink_build_covariate_file()
         # self.plink_logistic()
 
@@ -208,8 +214,9 @@ class OnePhenotypePipeline(Processor):
 
         fam_df.drop(columns=[self.tpmi_id_column, self.phenotype_column], inplace=True)
 
+        self.keep_samples_phen_df = fam_df
         self.keep_samples_phen_file = join(self.workdir, 'keep_samples.phen')
-        fam_df[['FID', 'IID', 'PHENO']].to_csv(self.keep_samples_phen_file, index=False, header=False, sep=' ')
+        self.keep_samples_phen_df[['FID', 'IID', 'PHENO']].to_csv(self.keep_samples_phen_file, index=False, header=False, sep=' ')
 
     def plink_keep(self):
         out = edit_fpath(
@@ -273,39 +280,38 @@ class OnePhenotypePipeline(Processor):
             f'2> {out}.stderr',
         ]
         self.call(self.CMD_LINEBREAK.join(lines))
-        self.bfile = out
+        self.analysis_ready_bfile = out
     
-    def plink_kinship(self):
-        # linkage disequilibrium pruning to reduce the number of variants
-        ld_out = edit_fpath(
-            fpath=self.bfile,
+    def plink_linkage_disequilibrium_pruning(self):
+        out = edit_fpath(
+            fpath=self.analysis_ready_bfile,
             old_suffix='',
             new_suffix='_indep',
             dstdir=self.workdir
         )
         lines = [
             f'{PLINK_EXE}',
-            f'--bfile {self.bfile}',
+            f'--bfile {self.analysis_ready_bfile}',
             '--indep-pairwise 200 5 0.2',  # window size 200 variants, 5 variants shift each time, r^2 > 0.2 relatedness threshold
             '--allow-no-sex',
-            f'--out {ld_out}',
-            f'1> {ld_out}.stdout',
-            f'2> {ld_out}.stderr',
+            f'--out {out}',
+            f'1> {out}.stdout',
+            f'2> {out}.stderr',
         ]
         self.call(self.CMD_LINEBREAK.join(lines))
-        variants_kept_txt = f'{ld_out}.prune.in'
+        self.ld_pruned_variants_txt = f'{out}.prune.in'
 
-        # kinship analysis between all pairs of individuals
+    def plink_kinship(self):
         kinship_out = edit_fpath(
-            fpath=self.bfile,
+            fpath=self.analysis_ready_bfile,
             old_suffix='',
             new_suffix='_kinship',
             dstdir=self.workdir
         )
         lines = [
             f'{PLINK_EXE}',
-            f'--bfile {self.bfile}',
-            f'--extract {variants_kept_txt}',
+            f'--bfile {self.analysis_ready_bfile}',
+            f'--extract {self.ld_pruned_variants_txt}',
             '--allow-no-sex',
             '--genome',
             f'--min {self.pi_hat}',
@@ -320,14 +326,14 @@ class OnePhenotypePipeline(Processor):
 
     def plink_assoc(self):
         out = edit_fpath(
-            fpath=self.bfile,
+            fpath=self.analysis_ready_bfile,
             old_suffix='',
             new_suffix='_assoc',
             dstdir=self.workdir
         )
         lines = [
             f'{PLINK_EXE}',
-            f'--bfile {self.bfile}',
+            f'--bfile {self.analysis_ready_bfile}',
             '--allow-no-sex',
             '--assoc',
             '--adjust',
@@ -339,12 +345,57 @@ class OnePhenotypePipeline(Processor):
 
         self.qmplot(
             association_file=f'{out}.assoc',
-            output_prefix=join(self.outdir, 'Chi-square')
+            output_prefix=join(self.outdir, 'chi_square')
         )
         self.sort_and_filter_association_results(
             association_prefix=out,
-            output_prefix=join(self.outdir, 'Chi-square')
+            output_prefix=join(self.outdir, 'chi_square')
         )
+
+    def plink_pca(self):
+        out = edit_fpath(
+            fpath=self.analysis_ready_bfile,
+            old_suffix='',
+            new_suffix='_pca',
+            dstdir=self.workdir
+        )
+        lines = [
+            f'{PLINK_EXE}',
+            f'--bfile {self.analysis_ready_bfile}',
+            f'--extract {self.ld_pruned_variants_txt}',
+            '--pca header',
+            f'--out {out}',
+            f'1> {out}.stdout',
+            f'2> {out}.stderr',
+        ]
+        self.call(self.CMD_LINEBREAK.join(lines))
+
+        df = pd.read_csv(f'{out}.eigenvec', sep=r'\s+')
+        df = df.merge(
+            right=self.keep_samples_phen_df,
+            how='inner',
+            left_on='IID',
+            right_on='IID',
+        ).rename(
+            columns={'PHENO': self.phenotype_column}
+        ).drop(
+            columns=['FID_x', 'FID_y', 'PID', 'MID', 'SEX'],
+        )
+        output_prefix = join(self.outdir, 'pca')
+        df.to_csv(f'{output_prefix}.csv', index=False)
+
+        plt.figure(figsize=(6/2.54, 6/2.54), dpi=600)
+        sns.scatterplot(data=df, x='PC1', y='PC2', hue=self.phenotype_column, marker='o', alpha=0.8, palette=['#478EC9', '#EA4242'])
+        plt.savefig(f'{output_prefix}.png', dpi=600, bbox_inches='tight')
+        plt.legend().remove()
+        plt.savefig(f'{output_prefix}_clean.png', dpi=600, bbox_inches='tight')
+        plt.close()
+    
+    def plink_build_covariate_file(self):
+        pass
+    
+    def plink_logistic(self):
+        pass
 
     def qmplot(self, association_file: str, output_prefix: str):
         df = pd.read_csv(association_file, sep=r'\s+')
@@ -363,7 +414,7 @@ class OnePhenotypePipeline(Processor):
             sign_line_cols='#D62728,#2CA02C',  # colors used `suggestiveline` and `genomewideline`
             sign_marker_color='red'
         )
-        plt.savefig(f'{output_prefix}-manhattan.png', dpi=600, bbox_inches='tight')
+        plt.savefig(f'{output_prefix}_manhattan.png', dpi=600, bbox_inches='tight')
         plt.close()
 
         f, ax = plt.subplots(figsize=(6/2.54, 6/2.54), dpi=600)
@@ -376,7 +427,7 @@ class OnePhenotypePipeline(Processor):
             xlabel=r"Expected $-log_{10}{(P)}$",
             ylabel=r"Observed $-log_{10}{(P)}$",
         )
-        plt.savefig(f'{output_prefix}-qq.png', dpi=600, bbox_inches='tight')
+        plt.savefig(f'{output_prefix}_qq.png', dpi=600, bbox_inches='tight')
         plt.close()
 
     def sort_and_filter_association_results(self, association_prefix: str, output_prefix: str):
@@ -391,7 +442,7 @@ class OnePhenotypePipeline(Processor):
         adjusted_association_file = f'{association_prefix}.assoc.adjusted'
         df = pd.read_csv(adjusted_association_file, sep=r'\s+')
         df = df[df['SNP'].isin(snps)]
-        df.to_csv(f'{output_prefix}-adjusted.csv', index=False)
+        df.to_csv(f'{output_prefix}_adjusted.csv', index=False)
 
 
 def read_fam(path: str) -> pd.DataFrame:
