@@ -28,6 +28,8 @@ class Plinker(Processor):
     hardy_weinberg_p_value_threshold: float
     association_p_value_threshold: float
     pi_hat: float
+    covariate_columns: List[str]
+    num_pc_covariates: int
 
     def main(
             self,
@@ -42,7 +44,9 @@ class Plinker(Processor):
             maximum_per_sample_missing_genotype_rate: float,
             hardy_weinberg_p_value_threshold: float,
             association_p_value_threshold: float,
-            pi_hat: float):
+            pi_hat: float,
+            covariate_columns: List[str],
+            num_pc_covariates: int):
 
         self.bfile = bfile
         self.id_link_xslx = id_link_xslx
@@ -56,6 +60,8 @@ class Plinker(Processor):
         self.hardy_weinberg_p_value_threshold = hardy_weinberg_p_value_threshold
         self.association_p_value_threshold = association_p_value_threshold
         self.pi_hat = pi_hat
+        self.covariate_columns = covariate_columns
+        self.num_pc_covariates = num_pc_covariates
 
         for phenotype_column in self.phenotype_columns:
             settings = copy(self.settings)
@@ -75,7 +81,9 @@ class Plinker(Processor):
                 maximum_per_sample_missing_genotype_rate=self.maximum_per_sample_missing_genotype_rate,
                 hardy_weinberg_p_value_threshold=self.hardy_weinberg_p_value_threshold,
                 association_p_value_threshold=self.association_p_value_threshold,
-                pi_hat=self.pi_hat)
+                pi_hat=self.pi_hat,
+                covariate_columns=self.covariate_columns,
+                num_pc_covariates=self.num_pc_covariates)
 
 
 class OnePhenotypePipeline(Processor):
@@ -92,12 +100,14 @@ class OnePhenotypePipeline(Processor):
     hardy_weinberg_p_value_threshold: float
     association_p_value_threshold: float
     pi_hat: float
+    covariate_columns: List[str]
+    num_pc_covariates: int
 
-    phenotype_type: str
-    keep_samples_phen_df: pd.DataFrame
+    sample_df: pd.DataFrame
     keep_samples_phen_file: str
     analysis_ready_bfile: str
     ld_pruned_variants_txt: str
+    covariates_txt: str
 
     def main(
             self,
@@ -112,7 +122,9 @@ class OnePhenotypePipeline(Processor):
             maximum_per_sample_missing_genotype_rate: float,
             hardy_weinberg_p_value_threshold: float,
             association_p_value_threshold: float,
-            pi_hat: float):
+            pi_hat: float,
+            covariate_columns: List[str],
+            num_pc_covariates: int):
 
         self.bfile = bfile
         self.id_link_xslx = id_link_xslx
@@ -126,14 +138,19 @@ class OnePhenotypePipeline(Processor):
         self.hardy_weinberg_p_value_threshold = hardy_weinberg_p_value_threshold
         self.association_p_value_threshold = association_p_value_threshold
         self.pi_hat = pi_hat
+        self.covariate_columns = copy(covariate_columns)  # copy to avoid leaking the list to other iterations
+        self.num_pc_covariates = num_pc_covariates
         
         self.copy_and_clean_bfile()
-        self.determine_phenotype_type()
-        if self.phenotype_type == 'continuous':
-            self.logger.info(f'Continuous phenotype "{self.phenotype_column}" is not supported yet, skipping')
+        phenotype_is = self.get_phenotype_type()
+        if phenotype_is == 'continuous':
+            self.logger.info(f'Continuous phenotype "{self.phenotype_column}" is not supported yet. Skipping...')
+            return
+        elif phenotype_is == 'categorical':
+            self.logger.info(f'Phenotype column "{self.phenotype_column}" contains string values (categorical), which is not supported. Skipping...')
             return
 
-        self.build_keep_samples_phen_file()
+        self.build_sample_df()
         self.plink_keep()
         self.plink_pheno()
         self.plink_qc()
@@ -145,8 +162,10 @@ class OnePhenotypePipeline(Processor):
         self.plink_assoc()
 
         self.plink_pca()
-        # self.plink_build_covariate_file()
-        # self.plink_logistic()
+        self.build_covariate_file()
+        self.plink_logistic()
+
+        self.sample_df.to_csv(join(self.outdir, 'sample_table.csv'), index=False)
 
     def copy_and_clean_bfile(self):
         for ext in ['.bed', '.bim', '.fam']:
@@ -165,18 +184,31 @@ class OnePhenotypePipeline(Processor):
         df['IID'] = df['IID'].apply(remove_suffix)
         write_fam(df=df, path=f'{self.bfile}.fam')
 
-    def determine_phenotype_type(self):
+    def get_phenotype_type(self) -> str:
         phenotypes = pd.read_excel(self.phenotype_xslx)[self.phenotype_column]
-        unqiue_phenotypes = set(phenotypes.dropna().astype(float))
-        if unqiue_phenotypes == {0, 1} or unqiue_phenotypes == {1, 2}:
-            self.phenotype_type = 'binary'
+        phenotypes = phenotypes.dropna().unique()
+        for value in phenotypes:
+            try:
+                float(value)  # anything that cannot be converted to float is categorical
+            except ValueError:
+                return 'categorical'
+        
+        phenotypes = set(map(float, phenotypes))  # now all values can be converted to float
+        if phenotypes == {0.0, 1.0} or phenotypes == {1.0, 2.0}:
+            return 'binary'
         else:
-            self.phenotype_type = 'continuous'
+            return 'continuous'
 
-    def build_keep_samples_phen_file(self):
-        self.logger.info(f'Building keep_samples.phen file')
+    def build_sample_df(self):
+        """
+        self.sample_df defines the sample space for analysis
+        It is the intersection of three data inputs: id_link_xslx, phenotype_xslx, and bfile.fam
+        """
+        self.logger.info(f'Building the sample dataframe and keep_samples.phen file')
+
+        usecols = [self.uuid_column, self.phenotype_column] + self.covariate_columns
+        phenotype_df = pd.read_excel(self.phenotype_xslx, usecols=usecols)
         id_link_df = pd.read_excel(self.id_link_xslx)
-        phenotype_df = pd.read_excel(self.phenotype_xslx, usecols=[self.uuid_column, self.phenotype_column])
         fam_df = read_fam(path=f'{self.bfile}.fam')
 
         phenotype_df = phenotype_df.dropna(subset=[self.phenotype_column])
@@ -201,7 +233,6 @@ class OnePhenotypePipeline(Processor):
             left_on=self.uuid_column,
             right_on=self.uuid_column,
         )
-        phenotype_df.drop(columns=[self.uuid_column], inplace=True)
         
         fam_df = fam_df.merge(
             right=phenotype_df,
@@ -212,11 +243,9 @@ class OnePhenotypePipeline(Processor):
 
         fam_df['PHENO'] = fam_df[self.phenotype_column]  # update with the user-specified phenotype column
 
-        fam_df.drop(columns=[self.tpmi_id_column, self.phenotype_column], inplace=True)
-
-        self.keep_samples_phen_df = fam_df
+        self.sample_df = fam_df
         self.keep_samples_phen_file = join(self.workdir, 'keep_samples.phen')
-        self.keep_samples_phen_df[['FID', 'IID', 'PHENO']].to_csv(self.keep_samples_phen_file, index=False, header=False, sep=' ')
+        self.sample_df[['FID', 'IID', 'PHENO']].to_csv(self.keep_samples_phen_file, index=False, header=False, sep=' ')        
 
     def plink_keep(self):
         out = edit_fpath(
@@ -320,15 +349,15 @@ class OnePhenotypePipeline(Processor):
             f'2> {kinship_out}.stderr',
         ]
         self.call(self.CMD_LINEBREAK.join(lines))
-        src = f'{kinship_out}.genome'
-        dst = join(self.outdir, 'kinship.txt')
-        shutil.copy(src, dst)
+
+        df = pd.read_csv(f'{kinship_out}.genome', sep=r'\s+')
+        df.to_csv(join(self.outdir, 'kinship.csv'), index=False)
 
     def plink_assoc(self):
         out = edit_fpath(
             fpath=self.analysis_ready_bfile,
             old_suffix='',
-            new_suffix='_assoc',
+            new_suffix='_chi_square',
             dstdir=self.workdir
         )
         lines = [
@@ -348,7 +377,8 @@ class OnePhenotypePipeline(Processor):
             output_prefix=join(self.outdir, 'chi_square')
         )
         self.sort_and_filter_association_results(
-            association_prefix=out,
+            association_file=f'{out}.assoc',
+            adjusted_association_file=f'{out}.assoc.adjusted',
             output_prefix=join(self.outdir, 'chi_square')
         )
 
@@ -370,32 +400,72 @@ class OnePhenotypePipeline(Processor):
         ]
         self.call(self.CMD_LINEBREAK.join(lines))
 
-        df = pd.read_csv(f'{out}.eigenvec', sep=r'\s+')
-        df = df.merge(
-            right=self.keep_samples_phen_df,
-            how='inner',
+        pca_df = pd.read_csv(f'{out}.eigenvec', sep=r'\s+')
+        usecols = ['IID']
+        for i in range(1, self.num_pc_covariates + 1):
+            if f'PC{i}' in pca_df.columns:
+                usecols.append(f'PC{i}')
+                self.covariate_columns.append(f'PC{i}')  # add PCs to the covariate columns
+        pca_df = pca_df[usecols]
+
+        self.sample_df = self.sample_df.merge(
+            right=pca_df,
+            how='left',
             left_on='IID',
             right_on='IID',
-        ).rename(
-            columns={'PHENO': self.phenotype_column}
-        ).drop(
-            columns=['FID_x', 'FID_y', 'PID', 'MID', 'SEX'],
         )
-        output_prefix = join(self.outdir, 'pca')
-        df.to_csv(f'{output_prefix}.csv', index=False)
 
+        output_prefix = join(self.outdir, 'pca')
         plt.figure(figsize=(6/2.54, 6/2.54), dpi=600)
-        sns.scatterplot(data=df, x='PC1', y='PC2', hue=self.phenotype_column, marker='o', alpha=0.8, palette=['#478EC9', '#EA4242'])
+        sns.scatterplot(data=self.sample_df, x='PC1', y='PC2', hue=self.phenotype_column, marker='o', alpha=0.8, palette=['#478EC9', '#EA4242'])
         plt.savefig(f'{output_prefix}.png', dpi=600, bbox_inches='tight')
         plt.legend().remove()
         plt.savefig(f'{output_prefix}_clean.png', dpi=600, bbox_inches='tight')
         plt.close()
     
-    def plink_build_covariate_file(self):
-        pass
+    def build_covariate_file(self):
+        # if no sex covariate is provided, add it from the fam file
+        has_sex_covar = False
+        for c in self.covariate_columns:
+            if c.lower() == 'sex':
+                has_sex_covar = True
+                break
+        if not has_sex_covar:
+            fam_file_sex = self.sample_df['SEX_']  # encoded as {1,2} in the fam file
+            self.sample_df['Sex'] = fam_file_sex - 1  # convert to {0,1}
+            self.covariate_columns.append('Sex')
+        
+        self.covariates_txt = join(self.workdir, 'covariates.txt')
+        self.sample_df.to_csv(self.covariates_txt, index=False, sep='\t')
     
     def plink_logistic(self):
-        pass
+        covar_names = ','.join(self.covariate_columns)
+        out = edit_fpath(
+            fpath=self.analysis_ready_bfile,
+            old_suffix='',
+            new_suffix='_logistic',
+            dstdir=self.workdir
+        )
+        lines = [
+            f'{PLINK_EXE}',
+            f'--bfile {self.analysis_ready_bfile}',
+            f'--covar {self.covariates_txt}',
+            f'--covar-name {covar_names}',
+            '--logistic hide-covar',
+            f'--out {out}',
+            f'1> {out}.stdout',
+            f'2> {out}.stderr',
+        ]
+        self.call(self.CMD_LINEBREAK.join(lines))
+        self.qmplot(
+            association_file=f'{out}.assoc.logistic',
+            output_prefix=join(self.outdir, 'logistic')
+        )
+        self.sort_and_filter_association_results(
+            association_file=f'{out}.assoc.logistic',
+            adjusted_association_file=None,
+            output_prefix=join(self.outdir, 'logistic')
+        )
 
     def qmplot(self, association_file: str, output_prefix: str):
         df = pd.read_csv(association_file, sep=r'\s+')
@@ -421,7 +491,7 @@ class OnePhenotypePipeline(Processor):
         plt.rcParams['font.family'] = 'Arial'
         plt.rcParams['font.size'] = 8
         qqplot(
-            data=df['P'],
+            data=df['P'].dropna(),
             ax=ax,
             marker='o',
             xlabel=r"Expected $-log_{10}{(P)}$",
@@ -430,16 +500,21 @@ class OnePhenotypePipeline(Processor):
         plt.savefig(f'{output_prefix}_qq.png', dpi=600, bbox_inches='tight')
         plt.close()
 
-    def sort_and_filter_association_results(self, association_prefix: str, output_prefix: str):
-        association_file = f'{association_prefix}.assoc'
+    def sort_and_filter_association_results(
+            self,
+            association_file: str,
+            adjusted_association_file: Optional[str],
+            output_prefix: str):
+        
         df = pd.read_csv(association_file, sep=r'\s+')
         df = df[df['P'] <= self.association_p_value_threshold]
         df.sort_values(by='P', ascending=True, inplace=True)
         df.to_csv(f'{output_prefix}.csv', index=False)
 
+        if adjusted_association_file is None:
+            return
+        
         snps = df['SNP'].tolist()
-
-        adjusted_association_file = f'{association_prefix}.assoc.adjusted'
         df = pd.read_csv(adjusted_association_file, sep=r'\s+')
         df = df[df['SNP'].isin(snps)]
         df.to_csv(f'{output_prefix}_adjusted.csv', index=False)
@@ -454,16 +529,10 @@ def read_fam(path: str) -> pd.DataFrame:
         else:
             sep = ' '
     df = pd.read_csv(path, sep=sep, header=None)
-    df.columns = ['FID', 'IID', 'PID', 'MID', 'SEX', 'PHENO']
+    df.columns = ['FID', 'IID', 'PID', 'MID', 'SEX_', 'PHENO']  # "SEX_" is to avoid potential collision with the SEX column from user-provided covariates
     return df
 
 
 def write_fam(df: pd.DataFrame, path: str):
-    assert len(df.columns) == 6, f'The number of columns in the dataframe must be 6, but got {len(df.columns)}: {list(df.columns)}'
+    df = df[['FID', 'IID', 'PID', 'MID', 'SEX_', 'PHENO']]
     df.to_csv(path, index=False, header=False, sep=' ')
-
-
-def read_bim(path: str) -> pd.DataFrame:
-    df = pd.read_csv(path, sep='\t', header=None)
-    df.columns = ['CHR', 'SNP', 'CM', 'BP', 'A1', 'A2']
-    return df

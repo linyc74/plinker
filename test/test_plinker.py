@@ -1,7 +1,7 @@
 import pandas as pd
 from os.path import exists
 from .setup import TestCase
-from plinker.plinker import Plinker, read_fam, read_bim
+from plinker.plinker import Plinker, read_fam
 
 
 class TestPlinker(TestCase):
@@ -26,6 +26,8 @@ class TestPlinker(TestCase):
             hardy_weinberg_p_value_threshold=1e-6,
             association_p_value_threshold=1e-3,
             pi_hat=0.01,
+            covariate_columns=['PHENOTYPE_C'],
+            num_pc_covariates=2,
         )
 
     def test_large_dataset(self):
@@ -42,6 +44,8 @@ class TestPlinker(TestCase):
             hardy_weinberg_p_value_threshold=0.001,
             association_p_value_threshold=1e-3,
             pi_hat=0.1875,
+            covariate_columns=['PHENOTYPE_C'],
+            num_pc_covariates=2,
         )
 
 
@@ -56,8 +60,3 @@ class TestFunctions(TestCase):
     def test_read_fam(self):
         df = read_fam(path=f'{self.indir}/wgas2.fam')
         self.assertEqual(df.shape, (90, 6))
-    
-    def test_read_bim(self):
-        df = read_bim(path=f'{self.indir}/wgas2.bim')
-        self.assertEqual(df.shape, (228694, 6))
-
