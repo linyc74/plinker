@@ -60,7 +60,7 @@ class Logger:
 
 class Processor:
 
-    CMD_LINEBREAK = ' '
+    CMD_LINEBREAK = '     '
     MAX_TRY = 3
 
     settings: Settings
