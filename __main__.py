@@ -3,7 +3,7 @@ import argparse
 from typing import Any
 
 
-__VERSION__ = '1.0.0-beta'
+__VERSION__ = '1.0.0'
 
 
 PROG = "python plinker"
