@@ -10,6 +10,14 @@ PROG = "python plinker"
 DESCRIPTION = f'GWAS pipeline based on PLINK 1.9\nAuthor: Yu-Cheng Lin (ylin@nycu.edu.tw)'
 REQUIRED = [
     {
+        'keys': ['--plink-path'],
+        'properties': {
+            'type': str,
+            'required': True,
+            'help': 'path to the plink executable file',
+        },
+    },
+    {
         'keys': ['--bfile'],
         'properties': {
             'type': str,
@@ -123,6 +131,24 @@ OPTIONAL = [
         },
     },
     {
+        'keys': ['--covariate-columns'],
+        'properties': {
+            'type': str,
+            'required': False,
+            'default': 'None',
+            'help': 'comma-separated covariate column names in the phenotype Excel file (default: %(default)s)',
+        },
+    },
+    {
+        'keys': ['--num-pc-covariates'],
+        'properties': {
+            'type': int,
+            'required': False,
+            'default': 5,
+            'help': 'number of principal components to use as covariates (default: %(default)s)',
+        },
+    },
+    {
         'keys': ['-t', '--threads'],
         'properties': {
             'type': int,
@@ -187,6 +213,7 @@ class EntryPoint:
         args = self.parser.parse_args()
         print(f'Start running PLINKer version {__VERSION__}\n', flush=True)
         plinker.main(
+            plink_path=args.plink_path,
             bfile=args.bfile,
             id_link_xslx=args.id_link_xslx,
             phenotype_xslx=args.phenotype_xslx,
@@ -199,6 +226,8 @@ class EntryPoint:
             hardy_weinberg_p_value_threshold=args.hardy_weinberg_p_value_threshold,
             association_p_value_threshold=args.association_p_value_threshold,
             pi_hat=args.pi_hat,
+            covariate_columns=args.covariate_columns,
+            num_pc_covariates=args.num_pc_covariates,
             outdir=args.outdir,
             threads=args.threads,
             debug=args.debug)

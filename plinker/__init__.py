@@ -6,6 +6,7 @@ from .utils import get_temp_path
 
 
 def main(
+        plink_path: str,
         bfile: str,
         id_link_xslx: str,
         phenotype_xslx: str,
@@ -18,6 +19,8 @@ def main(
         hardy_weinberg_p_value_threshold: float,
         association_p_value_threshold: float,
         pi_hat: float,
+        covariate_columns: str,
+        num_pc_covariates: int,
         outdir: str,
         threads: int,
         debug: bool):
@@ -38,6 +41,7 @@ def main(
         os.makedirs(d, exist_ok=True)
 
     Plinker(settings).main(
+        plink_path=plink_path,
         bfile=bfile,
         id_link_xslx=id_link_xslx,
         phenotype_xslx=phenotype_xslx,
@@ -50,6 +54,8 @@ def main(
         hardy_weinberg_p_value_threshold=hardy_weinberg_p_value_threshold,
         association_p_value_threshold=association_p_value_threshold,
         pi_hat=pi_hat,
+        covariate_columns=covariate_columns.split(',') if covariate_columns.lower() != 'none' else [],
+        num_pc_covariates=num_pc_covariates,
     )
 
     if not debug:

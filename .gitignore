@@ -17,6 +17,4 @@ test/test_*/
 test/*outdir*/
 test/*workdir*/
 
-*.exe
-*.log
 todo.md

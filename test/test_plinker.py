@@ -14,6 +14,7 @@ class TestPlinker(TestCase):
 
     def test_small_dataset(self):
         Plinker(settings=self.settings).main(
+            plink_path=f'{self.indir}/plink.exe',
             bfile=f'{self.indir}/wgas2',
             id_link_xslx=f'{self.indir}/wgas2_ID_link.xlsx',
             phenotype_xslx=f'{self.indir}/wgas2_phenotype.xlsx',
@@ -32,6 +33,7 @@ class TestPlinker(TestCase):
 
     def test_large_dataset(self):
         Plinker(settings=self.settings).main(
+            plink_path=f'{self.indir}/plink.exe',
             bfile=f'{self.indir}/1kg_phase1_all',
             id_link_xslx=f'{self.indir}/1kg_phase1_all_ID_link.xlsx',
             phenotype_xslx=f'{self.indir}/1kg_phase1_all_phenotype.xlsx',

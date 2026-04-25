@@ -5,17 +5,15 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from copy import copy
 from typing import List
-from os.path import dirname, join
+from os.path import abspath, join
 from qmplot import manhattanplot, qqplot
 from .utils import edit_fpath
 from .template import Processor
 
 
-PLINK_EXE = join(dirname(dirname(__file__)), 'plink.exe')
-
-
 class Plinker(Processor):
 
+    plink_path: str
     bfile: str
     id_link_xslx: str
     phenotype_xslx: str
@@ -33,6 +31,7 @@ class Plinker(Processor):
 
     def main(
             self,
+            plink_path: str,
             bfile: str,
             id_link_xslx: str,
             phenotype_xslx: str,
@@ -48,6 +47,7 @@ class Plinker(Processor):
             covariate_columns: List[str],
             num_pc_covariates: int):
 
+        self.plink_path = abspath(plink_path)
         self.bfile = bfile
         self.id_link_xslx = id_link_xslx
         self.phenotype_xslx = phenotype_xslx
@@ -70,6 +70,7 @@ class Plinker(Processor):
             for d in [settings.workdir, settings.outdir]:
                 os.makedirs(d, exist_ok=True)
             OnePhenotypePipeline(settings).main(
+                plink_path=self.plink_path,
                 bfile=self.bfile,
                 id_link_xslx=self.id_link_xslx,
                 phenotype_xslx=self.phenotype_xslx,
@@ -111,6 +112,7 @@ class OnePhenotypePipeline(Processor):
 
     def main(
             self,
+            plink_path: str,
             bfile: str,
             id_link_xslx: str,
             phenotype_xslx: str,
@@ -126,6 +128,7 @@ class OnePhenotypePipeline(Processor):
             covariate_columns: List[str],
             num_pc_covariates: int):
 
+        self.plink_path = plink_path
         self.bfile = bfile
         self.id_link_xslx = id_link_xslx
         self.phenotype_xslx = phenotype_xslx
@@ -255,7 +258,7 @@ class OnePhenotypePipeline(Processor):
             dstdir=self.workdir
         )
         lines = [
-            f'{PLINK_EXE}',
+            f'{self.plink_path}',
             f'--bfile {self.bfile}',
             f'--keep {self.keep_samples_phen_file}',
             '--allow-no-sex',
@@ -275,7 +278,7 @@ class OnePhenotypePipeline(Processor):
             dstdir=self.workdir
         )
         lines = [
-            f'{PLINK_EXE}',
+            f'{self.plink_path}',
             f'--bfile {self.bfile}',
             f'--pheno {self.keep_samples_phen_file}',
             f'--mpheno 1',
@@ -296,7 +299,7 @@ class OnePhenotypePipeline(Processor):
             dstdir=self.workdir
         )
         lines = [
-            f'{PLINK_EXE}',
+            f'{self.plink_path}',
             f'--bfile {self.bfile}',
             f'--maf {self.minimum_minor_allele_frequency}',
             f'--geno {self.maximum_per_variant_missing_genotype_rate}',
@@ -319,7 +322,7 @@ class OnePhenotypePipeline(Processor):
             dstdir=self.workdir
         )
         lines = [
-            f'{PLINK_EXE}',
+            f'{self.plink_path}',
             f'--bfile {self.analysis_ready_bfile}',
             '--indep-pairwise 200 5 0.2',  # window size 200 variants, 5 variants shift each time, r^2 > 0.2 relatedness threshold
             '--allow-no-sex',
@@ -338,7 +341,7 @@ class OnePhenotypePipeline(Processor):
             dstdir=self.workdir
         )
         lines = [
-            f'{PLINK_EXE}',
+            f'{self.plink_path}',
             f'--bfile {self.analysis_ready_bfile}',
             f'--extract {self.ld_pruned_variants_txt}',
             '--allow-no-sex',
@@ -361,7 +364,7 @@ class OnePhenotypePipeline(Processor):
             dstdir=self.workdir
         )
         lines = [
-            f'{PLINK_EXE}',
+            f'{self.plink_path}',
             f'--bfile {self.analysis_ready_bfile}',
             '--allow-no-sex',
             '--assoc',
@@ -390,7 +393,7 @@ class OnePhenotypePipeline(Processor):
             dstdir=self.workdir
         )
         lines = [
-            f'{PLINK_EXE}',
+            f'{self.plink_path}',
             f'--bfile {self.analysis_ready_bfile}',
             f'--extract {self.ld_pruned_variants_txt}',
             '--pca header',
@@ -447,7 +450,7 @@ class OnePhenotypePipeline(Processor):
             dstdir=self.workdir
         )
         lines = [
-            f'{PLINK_EXE}',
+            f'{self.plink_path}',
             f'--bfile {self.analysis_ready_bfile}',
             f'--covar {self.covariates_txt}',
             f'--covar-name {covar_names}',
