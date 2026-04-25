@@ -25,10 +25,11 @@ def main(
         threads: int,
         debug: bool):
 
-    prefix = os.path.basename(outdir)
+    name = os.path.basename(outdir)
     for c in [' ', ',', '(', ')']:
-        prefix = prefix.replace(c, '_')
-    workdir = get_temp_path(prefix=f'./{prefix}_')
+        name = name.replace(c, '_')
+    prefix = os.path.join('.', f'{name}_')
+    workdir = get_temp_path(prefix=prefix)
 
     settings = Settings(
         workdir=workdir,
